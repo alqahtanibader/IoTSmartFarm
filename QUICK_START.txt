@@ -1,0 +1,112 @@
+QUICK START GUIDE
+
+
+STEP 1: HARDWARE WIRING
+
+BMP280 Temperature Sensor:
+  VCC -> ESP32 3.3V
+  GND -> ESP32 GND
+  SDA -> ESP32 GPIO 39
+  SCL -> ESP32 GPIO 40
+
+Soil Moisture Sensor:
+  VCC -> ESP32 3.3V
+  GND -> ESP32 GND
+  SIG -> ESP32 GPIO 4
+
+Fan (via IRFZ44N MOSFET):
+  ESP32 GPIO 5 -> 330Ω resistor -> MOSFET Gate
+  MOSFET Gate -> 10kΩ pull-down resistor -> GND (prevents fan from running when off)
+  MOSFET Source -> GND
+  MOSFET Drain -> Fan negative terminal
+  Fan positive -> External 5V power supply
+  Connect ESP32 GND to power supply GND (common ground)
+
+DC Water Pump (via IRFZ44N MOSFET):
+  ESP32 GPIO 6 -> 330Ω resistor -> MOSFET Gate
+  MOSFET Gate -> 10kΩ pull-down resistor -> GND (IMPORTANT - prevents pump from running when off)
+  MOSFET Source -> GND
+  MOSFET Drain -> Pump negative terminal
+  Pump positive terminal -> External 5V power supply
+  Connect ESP32 GND to power supply GND (common ground)
+
+IMPORTANT: Each MOSFET needs TWO resistors:
+1. 330Ω resistor: Between GPIO and Gate (current limiting)
+2. 10kΩ pull-down resistor: Between Gate and GND (prevents floating gate)
+
+If you only have 330Ω resistors, you can use one as pull-down, but it will waste
+more power. Better to get 10kΩ resistors for pull-down (very common, cheap).
+
+Note: Use external 5V power supply for fan and pump (ESP32 USB port is too weak).
+
+-------------------------------------------------------------------------------------
+
+STEP 2: HIVEMQ CLOUD SETUP 
+
+1. Go to: https://www.hivemq.com/cloud/
+2. Sign up for free account
+3. Create cluster
+4. Create user with username/password
+5. Note your broker URL (e.g., xxxxx.s1.eu.hivemq.cloud)
+6. Use port 8883 (TLS)
+
+-------------------------------------------------------------------------------------
+
+STEP 3: ESP32 CODE SETUP
+
+1. Open: esp32_node_secure/esp32_node_secure.ino in Arduino IDE
+
+2. Update these lines (around line 46-52):
+   - WiFi SSID and password
+   - HiveMQ Cloud broker URL
+   - MQTT username and password
+   - Node ID (e.g., "node001")
+
+3. Calibrate soil moisture sensor (lines 537-538):
+   - Upload code first
+   - Open Serial Monitor
+   - Hold sensor in AIR - note raw value (this is dryValue)
+   - Dip sensor in WATER - note raw value (this is wetValue)
+   - Update dryValue and wetValue in code
+
+4. Upload to ESP32
+
+-------------------------------------------------------------------------------------
+
+STEP 4: PYTHON SERVER SETUP
+
+1. Open terminal, navigate to: hivemq/server
+
+2. Install dependencies:
+   pip install -r requirements.txt
+
+3. Open: server/dashboard_secure.py
+   Update lines 20-22 with your HiveMQ Cloud credentials
+
+4. Run server:
+   python dashboard_secure.py
+
+5. Open browser: http://localhost:5000
+
+-------------------------------------------------------------------------------------
+
+TROUBLESHOOTING
+
+ESP32 won't connect to WiFi:
+- Check SSID/password (case-sensitive)
+- Ensure router is 2.4GHz (ESP32-S3 doesn't support 5GHz)
+
+ESP32 won't connect to MQTT:
+- Verify HiveMQ Cloud credentials
+- Check internet connection
+- Verify broker URL and port (8883)
+
+Dashboard shows no data:
+- Check ESP32 Serial Monitor - should show "connected (SECURE)!"
+- Wait a few seconds for connection
+- Refresh browser
+
+Actuators don't work:
+- Check wiring connections
+- Verify external 5V power supply is connected
+- Check Serial Monitor for command reception

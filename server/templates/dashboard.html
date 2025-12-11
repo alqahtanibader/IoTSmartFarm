@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Smart Farm Dashboard - HiveMQ</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+        }
+        h1 {
+            color: #333;
+        }
+        .sensor-box {
+            display: inline-block;
+            margin: 10px;
+            padding: 15px;
+            background: #e3f2fd;
+            border-radius: 5px;
+            min-width: 150px;
+        }
+        .sensor-value {
+            font-size: 32px;
+            font-weight: bold;
+            color: #1976d2;
+        }
+        .control-box {
+            margin: 20px 0;
+            padding: 15px;
+            background: #fff3e0;
+            border-radius: 5px;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            border: none;
+            border-radius: 5px;
+            background: #4caf50;
+            color: white;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 34px;
+        }
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 34px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 26px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        input:checked + .slider {
+            background-color: #4caf50;
+        }
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+        #tempPlot, #moisturePlot {
+            margin: 20px 0;
+        }
+        select {
+            padding: 10px;
+            font-size: 16px;
+            margin: 10px 0;
+        }
+        .broker-info {
+            background: #e8f5e9;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            color: #2e7d32;
+        }
+        .actuator-widget {
+            flex: 1;
+            min-width: 200px;
+            background: #fff3e0;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 15px;
+        }
+        .actuator-title {
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #333;
+        }
+        .actuator-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+        .actuator-button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            border: none;
+            border-radius: 5px;
+            background: #4caf50;
+            color: white;
+            width: 100%;
+            max-width: 180px;
+        }
+        .actuator-button:hover {
+            background: #45a049;
+        }
+        .actuator-status {
+            font-size: 14px;
+            color: #666;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌱 Smart Farm Dashboard</h1>
+        
+        <div>
+            <label>Select Node: </label>
+            <select id="nodeSelect" onchange="selectNode()">
+                <option value="">Loading...</option>
+            </select>
+        </div>
+        
+        <div id="content" style="display:none;">
+            <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 20px;">
+                <div style="flex: 1; min-width: 300px;">
+                    <h2>Sensor Readings</h2>
+                    <div class="sensor-box">
+                        <div>Temperature</div>
+                        <div class="sensor-value" id="temp">--</div>
+                        <div>°C</div>
+                    </div>
+                    <div class="sensor-box">
+                        <div>Soil Moisture</div>
+                        <div class="sensor-value" id="moisture">--</div>
+                        <div>%</div>
+                    </div>
+                </div>
+                
+                <div style="flex: 1; min-width: 300px;">
+                    <h2>Thresholds</h2>
+                    <div class="control-box">
+                        <label>Temperature Threshold (°C):</label>
+                        <input type="number" id="tempThreshold" value="30" step="0.1">
+                        <br><br>
+                        <label>Moisture Threshold (%):</label>
+                        <input type="number" id="moistureThreshold" value="30" step="1">
+                        <br><br>
+                        <button onclick="updateThresholds()">Update Thresholds</button>
+                    </div>
+                </div>
+            </div>
+            
+            <h2>Actuator Control</h2>
+            <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+                <div class="actuator-widget">
+                    <div class="actuator-title">🌪️ Fan</div>
+                    <div class="actuator-content">
+                        <label class="switch">
+                            <input type="checkbox" id="fanSwitch" onchange="controlFan()">
+                            <span class="slider"></span>
+                        </label>
+                        <div class="actuator-status" id="fanStatus">OFF</div>
+                    </div>
+                </div>
+                
+                <div class="actuator-widget">
+                    <div class="actuator-title">💧 Water Pump</div>
+                    <div class="actuator-content">
+                        <label class="switch">
+                            <input type="checkbox" id="pumpSwitch" onchange="controlPump()">
+                            <span class="slider"></span>
+                        </label>
+                        <div class="actuator-status" id="pumpStatus">OFF</div>
+                    </div>
+                </div>
+                
+                <div class="actuator-widget">
+                    <div class="actuator-title">🤖 Auto Mode</div>
+                    <div class="actuator-content">
+                        <button id="autoBtn" onclick="toggleAuto()" class="actuator-button">Enable Auto</button>
+                        <div class="actuator-status" id="autoStatus">Disabled</div>
+                    </div>
+                </div>
+            </div>
+            
+            <h2>Live Plots</h2>
+            <div id="tempPlot"></div>
+            <div id="moisturePlot"></div>
+            
+            <h2>Device Management</h2>
+            <div class="control-box" style="background: #f3e5f5;">
+                <strong>Device Name:</strong>
+                <input type="text" id="deviceName" placeholder="Enter device name" style="padding: 5px; margin: 5px;">
+                <button onclick="updateDeviceName()">Update Name</button>
+                <span id="deviceNameStatus"></span>
+                <br><br>
+                <strong>Data Management:</strong>
+                <button onclick="deleteOldData()" style="background: #ff9800;">Delete Data Older Than 7 Days</button>
+                <button onclick="deleteAllData()" style="background: #f44336;">Delete All Data</button>
+                <span id="dataDeleteStatus"></span>
+                <div id="dataFilesList" style="margin-top: 10px; font-size: 12px; color: #666;"></div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let socket = io();
+        let currentNode = '';
+        let tempData = {x: [], y: []};
+        let moistureData = {x: [], y: []};
+        let lastUserAction = {fan: null, pump: null, time: 0};  // Track last user action to prevent flickering
+        
+        socket.on('connect', function() {
+            console.log('Connected to server');
+            loadNodes();
+        });
+        
+        socket.on('update', function(data) {
+            if (data.node_id === currentNode) {
+                // Don't update switches if user just clicked them (within 1 second)
+                let now = Date.now();
+                if (now - lastUserAction.time < 1000) {
+                    // User action was recent, only update if state matches or update everything except switches
+                    if ((lastUserAction.fan !== null && data.data.fan === lastUserAction.fan) ||
+                        (lastUserAction.pump !== null && data.data.pump === lastUserAction.pump)) {
+                        // State matches, safe to update everything
+                        updateDisplay(data.data);
+                        updatePlots(data.plot);
+                    } else {
+                        // State doesn't match yet, update everything except switches
+                        updateDisplayPartial(data.data);
+                        updatePlots(data.plot);
+                    }
+                } else {
+                    // No recent user action, update normally
+                    updateDisplay(data.data);
+                    updatePlots(data.plot);
+                }
+            }
+        });
+        
+        function loadNodes() {
+            fetch('/api/nodes')
+                .then(r => r.json())
+                .then(data => {
+                    let select = document.getElementById('nodeSelect');
+                    select.innerHTML = '<option value="">Select node...</option>';
+                    data.nodes.forEach(node => {
+                        let opt = document.createElement('option');
+                        opt.value = node;
+                        opt.text = node;
+                        select.appendChild(opt);
+                    });
+                    if (data.nodes.length > 0) {
+                        currentNode = data.nodes[0];
+                        select.value = currentNode;
+                        selectNode();
+                    }
+                });
+        }
+        
+        function selectNode() {
+            currentNode = document.getElementById('nodeSelect').value;
+            if (currentNode) {
+                document.getElementById('content').style.display = 'block';
+                loadData();
+                loadDataFiles();
+                loadDeviceName();
+            }
+        }
+        
+        function loadDeviceName() {
+            if (!currentNode) return;
+            
+            fetch('/api/nodes')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.node_info) {
+                        let nodeInfo = data.node_info.find(n => n.node_id === currentNode);
+                        if (nodeInfo && nodeInfo.name) {
+                            document.getElementById('deviceName').value = nodeInfo.name;
+                        } else {
+                            document.getElementById('deviceName').value = currentNode;
+                        }
+                    }
+                });
+        }
+        
+        function loadData() {
+            fetch(`/api/data/${currentNode}`)
+                .then(r => r.json())
+                .then(data => {
+                    updateDisplay(data);
+                });
+        }
+        
+        function updateDisplay(data) {
+            if (!data) return;
+            
+            // Update sensor readings
+            document.getElementById('temp').textContent = data.temperature ? data.temperature.toFixed(1) : '--';
+            document.getElementById('moisture').textContent = data.soil_moisture ? data.soil_moisture.toFixed(1) : '--';
+            
+            // Update actuator switches (only if user hasn't clicked recently)
+            let now = Date.now();
+            if (now - lastUserAction.time >= 500) {
+                // Safe to update switches
+                document.getElementById('fanSwitch').checked = data.fan || false;
+                document.getElementById('fanStatus').textContent = data.fan ? 'ON' : 'OFF';
+                document.getElementById('fanStatus').style.color = data.fan ? '#4caf50' : '#f44336';
+                
+                document.getElementById('pumpSwitch').checked = data.pump || false;
+                document.getElementById('pumpStatus').textContent = data.pump ? 'ON' : 'OFF';
+                document.getElementById('pumpStatus').style.color = data.pump ? '#4caf50' : '#f44336';
+            }
+            
+            // Update auto mode
+            let autoBtn = document.getElementById('autoBtn');
+            let autoStatus = document.getElementById('autoStatus');
+            if (data.auto_mode !== undefined) {
+                if (data.auto_mode) {
+                    autoBtn.textContent = 'Disable Auto';
+                    autoBtn.style.background = 'rgba(244, 67, 54, 0.3)';
+                    autoStatus.textContent = 'Enabled';
+                    autoStatus.style.color = '#4caf50';
+                } else {
+                    autoBtn.textContent = 'Enable Auto';
+                    autoBtn.style.background = 'rgba(76, 175, 80, 0.3)';
+                    autoStatus.textContent = 'Disabled';
+                    autoStatus.style.color = '#f44336';
+                }
+            }
+        }
+        
+        function updateDisplayPartial(data) {
+            // Update everything except actuator switches (used when user action is pending)
+            if (!data) return;
+            
+            document.getElementById('temp').textContent = data.temperature ? data.temperature.toFixed(1) : '--';
+            document.getElementById('moisture').textContent = data.soil_moisture ? data.soil_moisture.toFixed(1) : '--';
+            
+            // Don't update switches - user just clicked them
+        }
+        
+        function controlFan() {
+            let state = document.getElementById('fanSwitch').checked;
+            lastUserAction.fan = state;
+            lastUserAction.time = Date.now();
+            sendControl({fan: state});
+        }
+        
+        function controlPump() {
+            let state = document.getElementById('pumpSwitch').checked;
+            lastUserAction.pump = state;
+            lastUserAction.time = Date.now();
+            sendControl({pump: state});
+        }
+        
+        function toggleAuto() {
+            let btn = document.getElementById('autoBtn');
+            let enable = btn.textContent.includes('Enable');
+            sendControl({auto_mode: enable});
+        }
+        
+        function sendControl(command) {
+            // Update UI immediately for better responsiveness (optimistic update)
+            if (command.fan !== undefined) {
+                document.getElementById('fanSwitch').checked = command.fan;
+                document.getElementById('fanStatus').textContent = command.fan ? 'ON' : 'OFF';
+                document.getElementById('fanStatus').style.color = command.fan ? '#4caf50' : '#f44336';
+            }
+            if (command.pump !== undefined) {
+                document.getElementById('pumpSwitch').checked = command.pump;
+                document.getElementById('pumpStatus').textContent = command.pump ? 'ON' : 'OFF';
+                document.getElementById('pumpStatus').style.color = command.pump ? '#4caf50' : '#f44336';
+            }
+            if (command.auto_mode !== undefined) {
+                let autoBtn = document.getElementById('autoBtn');
+                let autoStatus = document.getElementById('autoStatus');
+                if (command.auto_mode) {
+                    autoBtn.textContent = 'Disable Auto';
+                    autoBtn.style.background = 'rgba(244, 67, 54, 0.3)';
+                    autoStatus.textContent = 'Enabled';
+                    autoStatus.style.color = '#4caf50';
+                } else {
+                    autoBtn.textContent = 'Enable Auto';
+                    autoBtn.style.background = 'rgba(76, 175, 80, 0.3)';
+                    autoStatus.textContent = 'Disabled';
+                    autoStatus.style.color = '#f44336';
+                }
+            }
+            
+            // Send command to server
+            fetch('/api/control', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    node_id: currentNode,
+                    command: command
+                })
+            }).then(response => {
+                // After successful send, allow WebSocket updates after a short delay
+                setTimeout(() => {
+                    lastUserAction.time = 0;  // Reset after 1 second
+                }, 1000);
+            }).catch(err => {
+                console.error('Error sending control:', err);
+                // Revert UI on error
+                loadData();
+            });
+        }
+        
+        function updateThresholds() {
+            let temp = parseFloat(document.getElementById('tempThreshold').value);
+            let moisture = parseFloat(document.getElementById('moistureThreshold').value);
+            
+            fetch(`/api/thresholds/${currentNode}`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    temp_threshold: temp,
+                    moisture_threshold: moisture
+                })
+            }).then(() => alert('Thresholds updated!'));
+        }
+        
+        function updateDeviceName() {
+            let name = document.getElementById('deviceName').value.trim();
+            if (!name) {
+                alert('Please enter a device name');
+                return;
+            }
+            
+            fetch(`/api/nodes/${currentNode}/name`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name: name})
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    document.getElementById('deviceNameStatus').textContent = '✓ Name updated!';
+                    document.getElementById('deviceNameStatus').style.color = 'green';
+                    setTimeout(() => {
+                        document.getElementById('deviceNameStatus').textContent = '';
+                    }, 3000);
+                } else {
+                    document.getElementById('deviceNameStatus').textContent = '✗ Error: ' + (data.error || 'Unknown error');
+                    document.getElementById('deviceNameStatus').style.color = 'red';
+                }
+            })
+            .catch(err => {
+                document.getElementById('deviceNameStatus').textContent = '✗ Error: ' + err;
+                document.getElementById('deviceNameStatus').style.color = 'red';
+            });
+        }
+        
+        function deleteOldData() {
+            if (!confirm('Delete data files older than 7 days for ' + currentNode + '?')) {
+                return;
+            }
+            
+            fetch(`/api/nodes/${currentNode}/delete-data`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({days: 7})
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    document.getElementById('dataDeleteStatus').textContent = 
+                        `✓ Deleted ${data.count} file(s): ${data.deleted.join(', ')}`;
+                    document.getElementById('dataDeleteStatus').style.color = 'green';
+                    loadDataFiles();
+                    setTimeout(() => {
+                        document.getElementById('dataDeleteStatus').textContent = '';
+                    }, 5000);
+                } else {
+                    document.getElementById('dataDeleteStatus').textContent = '✗ Error deleting data';
+                    document.getElementById('dataDeleteStatus').style.color = 'red';
+                }
+            })
+            .catch(err => {
+                document.getElementById('dataDeleteStatus').textContent = '✗ Error: ' + err;
+                document.getElementById('dataDeleteStatus').style.color = 'red';
+            });
+        }
+        
+        function deleteAllData() {
+            if (!confirm('⚠️ WARNING: Delete ALL data files for ' + currentNode + '? This cannot be undone!')) {
+                return;
+            }
+            
+            if (!confirm('Are you absolutely sure? All CSV data will be permanently deleted!')) {
+                return;
+            }
+            
+            fetch(`/api/nodes/${currentNode}/delete-all-data`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'}
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    document.getElementById('dataDeleteStatus').textContent = 
+                        `✓ Deleted ${data.count} file(s): ${data.deleted.join(', ')}`;
+                    document.getElementById('dataDeleteStatus').style.color = 'green';
+                    loadDataFiles();
+                    setTimeout(() => {
+                        document.getElementById('dataDeleteStatus').textContent = '';
+                    }, 5000);
+                } else {
+                    document.getElementById('dataDeleteStatus').textContent = '✗ Error deleting data';
+                    document.getElementById('dataDeleteStatus').style.color = 'red';
+                }
+            })
+            .catch(err => {
+                document.getElementById('dataDeleteStatus').textContent = '✗ Error: ' + err;
+                document.getElementById('dataDeleteStatus').style.color = 'red';
+            });
+        }
+        
+        function loadDataFiles() {
+            if (!currentNode) return;
+            
+            fetch(`/api/data/files/${currentNode}`)
+                .then(r => r.json())
+                .then(data => {
+                    let filesList = document.getElementById('dataFilesList');
+                    if (data.files && data.files.length > 0) {
+                        let totalSize = 0;
+                        let html = '<strong>Data Files (' + data.files.length + '):</strong><br>';
+                        data.files.forEach(file => {
+                            totalSize += file.size;
+                            let sizeKB = (file.size / 1024).toFixed(2);
+                            html += `• ${file.filename} (${sizeKB} KB, ${file.modified})<br>`;
+                        });
+                        let totalSizeMB = (totalSize / 1024 / 1024).toFixed(2);
+                        html += `<br><strong>Total: ${totalSizeMB} MB</strong>`;
+                        filesList.innerHTML = html;
+                    } else {
+                        filesList.innerHTML = '<em>No data files found</em>';
+                    }
+                })
+                .catch(err => {
+                    document.getElementById('dataFilesList').innerHTML = '<em>Error loading files</em>';
+                });
+        }
+        
+        function updatePlots(plot) {
+            if (!plot) return;
+            
+            // Temperature plot
+            Plotly.newPlot('tempPlot', [{
+                x: plot.time,
+                y: plot.temp,
+                type: 'scatter',
+                mode: 'lines',
+                name: 'Temperature',
+                line: {color: 'red'}
+            }], {
+                title: 'Temperature Over Time',
+                xaxis: {title: 'Time'},
+                yaxis: {title: 'Temperature (°C)'},
+                margin: {t: 40, b: 40, l: 50, r: 20}
+            });
+            
+            // Moisture plot - fixed Y axis 0-100%
+            Plotly.newPlot('moisturePlot', [{
+                x: plot.time,
+                y: plot.moisture,
+                type: 'scatter',
+                mode: 'lines',
+                name: 'Soil Moisture',
+                line: {color: 'blue'},
+                fill: 'tozeroy'
+            }], {
+                title: 'Soil Moisture Over Time',
+                xaxis: {title: 'Time'},
+                yaxis: {title: 'Moisture (%)', range: [0, 100]},
+                margin: {t: 40, b: 40, l: 50, r: 20}
+            });
+        }
+        
+        setInterval(loadNodes, 10000);  // Refresh nodes every 10 seconds
+    </script>
+</body>
+</html>
+
