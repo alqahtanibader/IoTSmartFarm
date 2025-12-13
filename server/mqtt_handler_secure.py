@@ -68,7 +68,8 @@ class MQTTHandlerSecure:
         if rc == 0:
             print("MQTT connected to HiveMQ (SECURE TLS)!")
             # Subscribe to all sensor topics
-            client.subscribe("farm/+/sensors")
+            client.subscribe("farm/+/sensors", qos=1)
+            print("Subscribed to farm/+/sensors with QoS 1")
         else:
             print(f"MQTT connection failed: {rc}")
     

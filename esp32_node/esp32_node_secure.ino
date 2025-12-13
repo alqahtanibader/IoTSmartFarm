@@ -371,10 +371,10 @@ void connectMQTT() {
       Serial.println(" connected (SECURE)!");
       
       // Subscribe to control and threshold topics
-      mqtt.subscribe(topic_control.c_str());
-      mqtt.subscribe(topic_thresholds.c_str());
+      mqtt.subscribe(topic_control.c_str(), 1);  // QoS 1
+      mqtt.subscribe(topic_thresholds.c_str(), 1);  // QoS 1
       
-      Serial.print("Subscribed to: ");
+      Serial.print("Subscribed to (QoS 1): ");
       Serial.print(topic_control);
       Serial.print(", ");
       Serial.println(topic_thresholds);
@@ -608,10 +608,11 @@ void publishData() {
   doc["pump"] = pumpOn;
   doc["auto_mode"] = autoMode;
   
-  // Serialize to JSON string and publish to MQTT
+  // Serialize to JSON string and publish to MQTT with QoS 1
   char buffer[200];
-  serializeJson(doc, buffer);
-  mqtt.publish(topic_sensors.c_str(), buffer);
+  size_t len = serializeJson(doc, buffer);
+  // publish(topic, payload, length, retained) - QoS 1 for guaranteed delivery
+  mqtt.publish(topic_sensors.c_str(), (uint8_t*)buffer, len, false);
 }
 
 void autoControl() {
